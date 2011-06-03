@@ -11,7 +11,8 @@ except RuntimeError:
     app.logger.debug("couldn't load settings from file listed in envvar")
     pass
 
-from utils import getBoolean
+from utils import getBoolean, ExtRequest
+app.request_class = ExtRequest
 
 @app.route("/store/<host>/<sourcetype>/<float:timestamp>", methods=['PUT'])
 def store(host, sourcetype, timestamp):
