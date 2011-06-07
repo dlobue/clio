@@ -5,6 +5,8 @@ from bson import json_util
 from flask.wrappers import Request, cached_property
 
 def getBoolean(string):
+    if string is None:
+        return False
     return {
         '1': True, 'yes': True, 'true': True, 'on': True,
         '0': False, 'no': False, 'false': False, 'off': False, '': False, None: False
