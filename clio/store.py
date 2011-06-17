@@ -8,9 +8,9 @@ app.config.from_object('clio.settings')
 try:
     app.config.from_envvar('CLIO_SETTINGS')
 except RuntimeError:
-    app.logger.debug("couldn't load settings from file in envvar. trying /etc/clio.cfg")
+    app.logger.debug("couldn't load settings from file in envvar. trying /etc/clio/app.conf")
     try:
-        app.config.from_pyfile('/etc/clio.cfg')
+        app.config.from_pyfile('/etc/clio/app.conf')
     except RuntimeError:
         app.logger.debug("unable to find any settings files. using defaults in local settings module.")
 
