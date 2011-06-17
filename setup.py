@@ -23,6 +23,7 @@ setup(name='clio',
       install_requires=[
           "pymongo>=1.10.0",
           "flask>=0.6.1",
+          "simpledaemon>=1.0.1",
       ],
       entry_points="""
       # -*- Entry points: -*-
