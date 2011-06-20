@@ -49,7 +49,7 @@ def store(host, sourcetype, timestamp):
                'data': data}
 
     db = pymongo.Connection(app.config['MONGO_HOSTS'], app.config['MONGO_PORT']).clio
-    coll = db['_%i' % timestamp.year]['_{0:0>2}'.format(timestamp.month)][sourcetype]
+    coll = db['{0}_{1}{2:0>2}'.format(sourcetype, timestamp.year, timestamp.month)]
     coll.update(spec, doc, upsert=True, safe=True)
 
     return ''
