@@ -40,8 +40,8 @@ def store(host, sourcetype, timestamp):
 
     app.logger.info("host: %s, sourcetype: %s, timestamp: %s" % (host, sourcetype, timestamp))
 
-    extra = request.headers.get('extra', None)
-    if extra is not None:
+    extra = request.headers.get('extra', {})
+    if extra:
         extra = json.loads(extra, object_hook=json_util.object_hook)
 
     if extra.get('timestamp_as_id', False):
