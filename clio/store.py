@@ -17,6 +17,14 @@ except RuntimeError:
 from utils import getBoolean, ExtRequest
 app.request_class = ExtRequest
 
+mongo_conn = None
+def get_mongo_conn():
+    global mongo_conn
+    if mongo_conn is None:
+        mongo_conn = pymongo.Connection(app.config['MONGO_HOSTS'], app.config['MONGO_PORT']).clio
+    return mongo_conn
+
+
 @app.route("/store/<host>/<sourcetype>/<float:timestamp>", methods=['PUT'])
 def store(host, sourcetype, timestamp):
 
@@ -48,11 +56,11 @@ def store(host, sourcetype, timestamp):
                'host': host,
                'data': data}
 
-    db = pymongo.Connection(app.config['MONGO_HOSTS'], app.config['MONGO_PORT']).clio
+    db = get_mongo_conn()
     coll = db['{0}_{1}{2:0>2}'.format(sourcetype, timestamp.year, timestamp.month)]
     coll.update(spec, doc, upsert=True, safe=True)
 
-    return ''
+    return "ok"
 
 
 if __name__ == '__main__':
