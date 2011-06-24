@@ -1,6 +1,6 @@
 
 import json
-from bson import json_util
+from bson import json_util, BSON
 
 from flask.wrappers import Request, cached_property
 
@@ -19,6 +19,9 @@ class ExtRequest(Request):
         """If the mimetype is `application/json` this will contain the
         parsed JSON data.
         """
+        if self.mimetype == 'application/bson':
+            return BSON(self.data).decode()
+
         if self.mimetype in ('application/json','application/extjson'):
             if 'ext' in self.mimetype:
                 objhook = json_util.object_hook
