@@ -1,6 +1,8 @@
 
 from datetime import datetime
+import json
 
+from bson import json_util
 import pymongo
 from flask import Flask, request
 app = Flask(__name__)
@@ -14,7 +16,7 @@ except RuntimeError:
     except RuntimeError:
         app.logger.debug("unable to find any settings files. using defaults in local settings module.")
 
-from utils import getBoolean, ExtRequest
+from utils import ExtRequest
 app.request_class = ExtRequest
 
 mongo_conn = None
@@ -28,11 +30,6 @@ def get_mongo_conn():
 @app.route("/store/<host>/<sourcetype>/<float:timestamp>", methods=['PUT'])
 def store(host, sourcetype, timestamp):
 
-    if request.headers.get('interval', None):
-        interval = float(request.headers['interval'])
-        offset = timestamp % interval
-        timestamp = timestamp - offset
-
     timestamp = datetime.utcfromtimestamp(timestamp)
 
     if request.json is not None:
@@ -43,13 +40,20 @@ def store(host, sourcetype, timestamp):
 
     app.logger.info("host: %s, sourcetype: %s, timestamp: %s" % (host, sourcetype, timestamp))
 
-    if request.headers.get('_id', None):
-        spec = {'_id': request.headers['_id']}
+    extra = request.headers.get('extra', None)
+    if extra is not None:
+        extra = json.loads(extra, object_hook=json_util.object_hook)
+
+    if extra.get('timestamp_as_id', False):
+        spec = {'_id': timestamp}
+        index = [('_id', pymongo.DESCENDING)]
     else:
         spec = {'ts': timestamp,
                 'host': host}
+        index = [('host', pymongo.ASCENDING),
+                 ('ts', pymongo.DESCENDING)]
 
-    if getBoolean(request.headers.get('custom', None)):
+    if extra.get('custom_schema', False):
         doc = data
     else:
         doc = {'ts': timestamp,
@@ -59,6 +63,7 @@ def store(host, sourcetype, timestamp):
     db = get_mongo_conn()
     coll = db['{0}_{1}{2:0>2}'.format(sourcetype, timestamp.year, timestamp.month)]
     coll.update(spec, doc, upsert=True, safe=True)
+    coll.ensure_index(index, background=True)
 
     return "ok"
 
