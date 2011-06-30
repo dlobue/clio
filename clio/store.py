@@ -61,7 +61,7 @@ def store(host, sourcetype, timestamp):
                'data': data}
 
     db = get_mongo_conn()
-    coll = db['{0}_{1}{2:0>2}'.format(sourcetype, timestamp.year, timestamp.month)]
+    coll = db['%s_%s' % (sourcetype, timestamp.strftime('%Y%m'))]
     coll.update(spec, doc, upsert=True, safe=True)
     coll.ensure_index(index, background=True)
 
