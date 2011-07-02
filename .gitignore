@@ -1,0 +1,11 @@
+*.pyo
+*.pyc
+*~
+*.swp
+.svn/*
+build/*
+dist/*
+CVS/*
+SVN/*
+*.egg-info/*
+deps/*

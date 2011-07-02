@@ -24,6 +24,7 @@ setup(name='clio',
           "pymongo>=1.10.0",
           "flask>=0.6.1",
           "simpledaemon>=1.0.1",
+          "gunicorn>=0.12.2",
       ],
       entry_points="""
       # -*- Entry points: -*-
