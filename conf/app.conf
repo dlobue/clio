@@ -1,6 +1,5 @@
 
-DEBUG = True
-SECRET_KEY = 'somestring'
+DEBUG = False
 HOST = '0.0.0.0'
 PORT = 80
 
