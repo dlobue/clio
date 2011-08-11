@@ -34,6 +34,17 @@ def get_mongo_conn():
     return mongo_conn
 
 
+def validify_data(data):
+    if not isinstance(data, dict):
+        return data
+
+    for key in data.iterkeys():
+        if isinstance(data[key], dict):
+            data[key] = validify_data(data[key])
+        if '.' in key:
+            data[key.replace('.', '__DOT__')] = data.pop(key)
+    return data
+
 
 
 @app.route("/batch_store", methods=['PUT', 'POST'])
@@ -48,7 +59,7 @@ def batch():
     db = get_mongo_conn()
     coll = db['%s_%s' % (sourcetype, extra['started_timestamp'].strftime('%Y%m'))]
 
-    def _iter_records(spool):
+    def _iter_records(spool, validify=False):
         while 1:
             lenprefix = spool.readline()
             if not lenprefix:
@@ -60,7 +71,10 @@ def batch():
                 app.logger.error("Malformed record!")
 
             timestamp, data = json_loads(record, object_hook=object_hook)
-            yield timestamp, data
+            if validify:
+                yield timestamp, validify_data(data)
+            else:
+                yield timestamp, data
 
 
 
@@ -96,7 +110,7 @@ def batch():
             return doc
 
         coll.ensure_index(index, background=True, unique=True)
-        coll.insert((_schema(ts,data) for ts,data in _iter_records(spool)))
+        coll.insert((_schema(ts,data) for ts,data in _iter_records(spool, True)))
 
     return "ok"
 
