@@ -31,7 +31,7 @@ def get_mongo_conn():
     return mongo_conn
 
 
-@app.route("/store/<host>/<sourcetype>/<float:timestamp>", methods=['PUT'])
+@app.route("/store/<host>/<sourcetype>/<float:timestamp>", methods=['PUT', 'POST'])
 def store(host, sourcetype, timestamp):
 
     timestamp = datetime.utcfromtimestamp(timestamp)
