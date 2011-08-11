@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '0.2.4'
+version = '0.2.5'
 
 setup(name='clio',
       version=version,
@@ -17,14 +17,14 @@ setup(name='clio',
       include_package_data=True,
       scripts=['bin/clio'],
       data_files=[('/etc/init', ['init_scripts/clio.conf']),
-                  ('/etc/clio', ['conf/daemon.conf', 'conf/app.conf']),
+                  ('/etc/clio', ['conf/app.conf']),
                  ],
       zip_safe=False,
       install_requires=[
-          "pymongo>=1.10.0",
+          "pymongo>=1.10.0, <2",
           "flask>=0.6.1",
-          "simpledaemon>=1.0.1",
           "gunicorn>=0.12.2",
+          "gevent>=0.13.5, <0.14",
       ],
       entry_points="""
       # -*- Entry points: -*-
