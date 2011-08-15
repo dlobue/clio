@@ -72,6 +72,11 @@ def store(host, sourcetype, timestamp):
     return "ok"
 
 
+@app.route("/ping")
+def ping():
+    return "pong"
+
+
 if __name__ == '__main__':
     app.run(host=app.config['HOST'], port=app.config['PORT'])
 
