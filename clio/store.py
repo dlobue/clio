@@ -1,9 +1,12 @@
 
 from datetime import datetime
 import json
+from json import loads as json_loads
 import os.path
+from cStringIO import StringIO
 
-from bson import json_util
+#from bson import json_util, BSON
+from bson.json_util import object_hook
 import pymongo
 from flask import Flask, request
 app = Flask(__name__)
@@ -31,6 +34,81 @@ def get_mongo_conn():
     return mongo_conn
 
 
+
+
+@app.route("/batch_store", methods=['PUT', 'POST'])
+def batch():
+    spool = StringIO(request.data)
+
+    record = spool.read(int(spool.readline()))
+    host,sourcetype,extra = json_loads(record, object_hook=object_hook)
+
+    app.logger.info("host: %s, sourcetype: %s" % (host, sourcetype))
+
+    db = get_mongo_conn()
+    coll = None
+    coll_name_timestamp = None
+
+    def _iter_records(spool):
+        while 1:
+            lenprefix = spool.readline()
+            if not lenprefix:
+                break
+            lenprefix = int(lenprefix)
+            record = spool.read(lenprefix)
+
+            if len(record) != lenprefix:
+                app.logger.error("Malformed record!")
+
+            timestamp, data = json_loads(record, object_hook=object_hook)
+            yield timestamp, data
+
+
+
+    if extra.get('timestamp_as_id', False):
+        index = [('_id', pymongo.DESCENDING)]
+
+        for timestamp,data in _iter_records(spool):
+            _coll_name_ts = timestamp.strftime('%Y%m')
+            if coll is None or _coll_name_ts != coll_name_timestamp:
+                coll_name_timestamp = _coll_name_ts
+                coll = db['%s_%s' % (sourcetype, _coll_name_ts)]
+
+            spec = {'_id': timestamp}
+
+            if hasattr(data, '__iter__') and not hasattr(data, 'setdefault'):
+                data = { '$each': data }
+            data = {'$addToSet':
+                    {'data': data }
+                   }
+
+
+            coll.ensure_index(index, background=True)
+            coll.update(spec, data, upsert=True)
+
+
+    else:
+
+        index = [('host', pymongo.ASCENDING),
+                 ('ts', pymongo.DESCENDING)]
+
+        def _schema(timestamp, data):
+            if extra.get('custom_schema', False):
+                doc = data
+            else:
+                doc = {'ts': timestamp,
+                       'host': host,
+                       'data': data}
+            return doc
+
+        coll.ensure_index(index, background=True, unique=True)
+        coll.insert((_schema(ts,data) for ts,data in _iter_records(spool)))
+
+    return "ok"
+
+
+
+
 @app.route("/store/<host>/<sourcetype>/<float:timestamp>", methods=['PUT', 'POST'])
 def store(host, sourcetype, timestamp):
 
@@ -46,7 +124,7 @@ def store(host, sourcetype, timestamp):
 
     extra = request.headers.get('extra', {})
     if extra:
-        extra = json.loads(extra, object_hook=json_util.object_hook)
+        extra = json_loads(extra, object_hook=object_hook)
 
     if extra.get('timestamp_as_id', False):
         spec = {'_id': timestamp}
