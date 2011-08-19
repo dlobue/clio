@@ -116,6 +116,9 @@ def store(host, sourcetype, timestamp):
 
     app.logger.info("host: %s, sourcetype: %s, timestamp: %s" % (host, sourcetype, timestamp))
 
+    db = get_mongo_conn()
+    coll = db['%s_%s' % (sourcetype, timestamp.strftime('%Y%m'))]
+
     extra = request.headers.get('extra', {})
     if extra:
         extra = json_loads(extra, object_hook=object_hook)
@@ -123,11 +126,13 @@ def store(host, sourcetype, timestamp):
     if extra.get('timestamp_as_id', False):
         spec = {'_id': timestamp}
         index = [('_id', pymongo.DESCENDING)]
+        coll.ensure_index(index, background=True)
     else:
         spec = {'ts': timestamp,
                 'host': host}
         index = [('host', pymongo.ASCENDING),
                  ('ts', pymongo.DESCENDING)]
+        coll.ensure_index(index, background=True, unique=True)
 
     if extra.get('custom_schema', False):
         doc = data
@@ -136,10 +141,7 @@ def store(host, sourcetype, timestamp):
                'host': host,
                'data': data}
 
-    db = get_mongo_conn()
-    coll = db['%s_%s' % (sourcetype, timestamp.strftime('%Y%m'))]
     coll.update(spec, doc, upsert=True, safe=True)
-    coll.ensure_index(index, background=True)
 
     return "ok"
 
