@@ -46,8 +46,7 @@ def batch():
     app.logger.info("host: %s, sourcetype: %s" % (host, sourcetype))
 
     db = get_mongo_conn()
-    coll = None
-    coll_name_timestamp = None
+    coll = db['%s_%s' % (sourcetype, extra['started_timestamp'].strftime('%Y%m'))]
 
     def _iter_records(spool):
         while 1:
@@ -69,11 +68,6 @@ def batch():
         index = [('_id', pymongo.DESCENDING)]
 
         for timestamp,data in _iter_records(spool):
-            _coll_name_ts = timestamp.strftime('%Y%m')
-            if coll is None or _coll_name_ts != coll_name_timestamp:
-                coll_name_timestamp = _coll_name_ts
-                coll = db['%s_%s' % (sourcetype, _coll_name_ts)]
-
             spec = {'_id': timestamp}
 
             if hasattr(data, '__iter__') and not hasattr(data, 'setdefault'):
