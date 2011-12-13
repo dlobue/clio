@@ -8,6 +8,7 @@ from cStringIO import StringIO
 #from bson import json_util, BSON
 from bson.json_util import object_hook
 import pymongo
+import monkeymongo #monkey patch pymongo to automatically reconnect
 from flask import Flask, request
 app = Flask(__name__)
 app.config.from_object('clio.settings')
