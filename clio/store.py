@@ -1,5 +1,7 @@
 
 from datetime import datetime
+import time
+import calendar
 import json
 from json import loads as json_loads
 import os.path
@@ -46,6 +48,21 @@ def validify_data(data):
             data[key.replace('.', '__DOT__')] = data.pop(key)
     return data
 
+from pyes import ES as _ES
+from pyes.exceptions import ElasticSearchException
+
+class ES(_ES):
+    def force_bulk(self):
+        """
+        Force executing of all bulk data
+        """
+        if self.bulk_items:
+            r = self._send_request("POST", "/_bulk", self.bulk_data.getvalue())
+            self.bulk_data = StringIO()
+            self.bulk_items = 0
+            return r
+
+conn = ES('userver02:9200')
 
 
 @app.route("/batch_store", methods=['PUT', 'POST'])
@@ -57,8 +74,8 @@ def batch():
 
     app.logger.info("host: %s, sourcetype: %s" % (host, sourcetype))
 
-    db = get_mongo_conn()
-    coll = db['%s_%s' % (sourcetype, extra['started_timestamp'].strftime('%Y%m'))]
+    #db = get_mongo_conn()
+    #coll = db['%s_%s' % (sourcetype, extra['started_timestamp'].strftime('%Y%m'))]
 
     def _iter_records(spool, validify=False):
         while 1:
@@ -79,21 +96,55 @@ def batch():
 
 
 
+    from pprint import pformat
+
     if extra.get('timestamp_as_id', False):
         index = [('_id', pymongo.DESCENDING)]
 
         for timestamp,data in _iter_records(spool):
-            spec = {'_id': timestamp}
+            #spec = {'_id': timestamp}
 
-            if hasattr(data, '__iter__') and not hasattr(data, 'setdefault'):
-                data = { '$each': data }
-            data = {'$addToSet':
-                    {'data': data }
-                   }
+            #if hasattr(data, '__iter__') and not hasattr(data, 'setdefault'):
+                #data = { '$each': data }
+            #data = {'$addToSet':
+                    #{'data': data }
+                   #}
 
 
-            coll.ensure_index(index, background=True)
-            coll.update(spec, data, upsert=True)
+            #coll.ensure_index(index, background=True)
+            #coll.update(spec, data, upsert=True)
+            #TODO
+
+            if isinstance(data, dict):
+                data = [data]
+            timestamp = calendar.timegm( timestamp.timetuple() )
+            data = dict(data=data)
+            doc = dict(script="ctx._source.data += ($ in data if !ctx._source.data.contains($))", params=data)
+            #doc = dict(script="ctx._source.data += data", params=data)
+            app.logger.debug("data: %s" % pformat(data))
+
+            path = conn._make_path(['clio', sourcetype, int(timestamp), '_update'])
+            try:
+                result = conn._send_request('POST', path, doc, {})
+            except ElasticSearchException, e:
+                if e.status == 404 and e.message.startswith(u'DocumentMissingException'):
+                    try:
+                        result = conn.index(data, 'clio', sourcetype, id=int(timestamp), querystring_args=dict(op_type='create'))
+                        #result = conn.index(dict(data=data), 'clio', sourcetype, id=int(timestamp), op_type='create')
+                        #XXX: may need to use querystring_args
+                        #querystring_args=dict(op_type='create')
+                    except ElasticSearchException, e:
+                        if e.status == 409 and e.message.startswith(u'DocumentAlreadyExistsException'):
+                            result = conn._send_request('POST', path, doc, {})
+                        else:
+                            raise e
+                else:
+                    raise e
+
+
+            #TODO: ensure ok: true
+            app.logger.debug("result: %s" % pformat(result))
+            assert result['ok']
 
 
     else:
@@ -110,8 +161,19 @@ def batch():
                        'data': data}
             return doc
 
-        coll.ensure_index(index, background=True, unique=True)
-        coll.insert((_schema(ts,data) for ts,data in _iter_records(spool, True)))
+        #coll.ensure_index(index, background=True, unique=True)
+        #coll.insert((_schema(ts,data) for ts,data in _iter_records(spool, True)))
+
+        for ts,data in _iter_records(spool, True):
+            app.logger.debug("data: %s" % pformat(data))
+            result = conn.index(_schema(ts,data), 'clio', sourcetype, bulk=True)
+            #app.logger.info("result: %s" % pformat(result))
+
+        result = conn.force_bulk()
+        for status in result['items']:
+            assert status['create']['ok']
+        #TODO: ensure ok: true
+        app.logger.debug("force_bulk result: %s" % pformat(result))
 
     return "ok"
 
