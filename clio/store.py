@@ -62,8 +62,7 @@ class ES(_ES):
             self.bulk_items = 0
             return r
 
-conn = ES('userver02:9200')
-
+conn = ES('%s:%s' % (app.config['ES_HOST'], app.config['ES_PORT']))
 
 @app.route("/batch_store", methods=['PUT', 'POST'])
 def batch():
@@ -140,6 +139,7 @@ def batch():
                             raise e
                 else:
                     raise e
+                #TODO: handle VersionConflictEngineException
 
 
             #TODO: ensure ok: true
