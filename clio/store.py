@@ -62,10 +62,12 @@ class ES(_ES):
             self.bulk_items = 0
             return r
 
-conn = ES('%s:%s' % (app.config['ES_HOST'], app.config['ES_PORT']))
 
 @app.route("/batch_store", methods=['PUT', 'POST'])
 def batch():
+
+    conn = ES('%s:%s' % (app.config['ES_HOST'], app.config['ES_PORT']), timeout=30)
+
     spool = StringIO(request.data)
 
     record = spool.read(int(spool.readline()))
@@ -120,30 +122,41 @@ def batch():
             data = dict(data=data)
             doc = dict(script="ctx._source.data += ($ in data if !ctx._source.data.contains($))", params=data)
             #doc = dict(script="ctx._source.data += data", params=data)
-            app.logger.debug("data: %s" % pformat(data))
 
             path = conn._make_path(['clio', sourcetype, int(timestamp), '_update'])
-            try:
-                result = conn._send_request('POST', path, doc, {})
-            except ElasticSearchException, e:
-                if e.status == 404 and e.message.startswith(u'DocumentMissingException'):
-                    try:
-                        result = conn.index(data, 'clio', sourcetype, id=int(timestamp), querystring_args=dict(op_type='create'))
-                        #result = conn.index(dict(data=data), 'clio', sourcetype, id=int(timestamp), op_type='create')
-                        #XXX: may need to use querystring_args
-                        #querystring_args=dict(op_type='create')
-                    except ElasticSearchException, e:
-                        if e.status == 409 and e.message.startswith(u'DocumentAlreadyExistsException'):
-                            result = conn._send_request('POST', path, doc, {})
-                        else:
+            c = 0
+            MAX_RETRY = 10
+            while 1:
+                try:
+                    result = conn._send_request('POST', path, doc, {})
+                except ElasticSearchException, e:
+                    if ((e.status == 404 and e.message.startswith(u'DocumentMissingException'))
+                        or e.message == u"Unknown exception type"):
+                        try:
+                            result = conn.index(data, 'clio', sourcetype, id=int(timestamp), querystring_args=dict(op_type='create'))
+                            #result = conn.index(dict(data=data), 'clio', sourcetype, id=int(timestamp), op_type='create')
+                            #XXX: may need to use querystring_args
+                            #querystring_args=dict(op_type='create')
+                        except ElasticSearchException, e:
+                            if ((e.status == 409 and e.message.startswith(u'DocumentAlreadyExistsException'))
+                                or e.message.startswith(u'VersionConflictEngineException')):
+                                result = conn._send_request('POST', path, doc, {})
+                            else:
+                                app.logger.exception("data: %s" % pformat(data))
+                                raise e
+                    elif e.status == 409 and e.message.startswith(u'VersionConflictEngineException'):
+                        if c > MAX_RETRY:
+                            app.logger.error("passed max retry! returning error!")
                             raise e
-                else:
-                    raise e
-                #TODO: handle VersionConflictEngineException
+                        c += 1
+                        continue
+                    else:
+                        app.logger.exception("doc: %s" % pformat(doc))
+                        raise e
+                break
 
 
-            #TODO: ensure ok: true
-            app.logger.debug("result: %s" % pformat(result))
+            #app.logger.debug("result: %s" % pformat(result))
             assert result['ok']
 
 
@@ -165,15 +178,25 @@ def batch():
         #coll.insert((_schema(ts,data) for ts,data in _iter_records(spool, True)))
 
         for ts,data in _iter_records(spool, True):
-            app.logger.debug("data: %s" % pformat(data))
-            result = conn.index(_schema(ts,data), 'clio', sourcetype, bulk=True)
+            #app.logger.debug("data: %s" % pformat(data))
+            try:
+                conn.index(_schema(ts,data), 'clio', sourcetype, bulk=True)
+            except Exception, e:
+                app.logger.debug("data: %s" % pformat(data))
+                raise e
+            #if conn.bulk_items > 10:
+                #result = conn.force_bulk()
+                #if result:
+                    #for status in result['items']:
+                        #assert status['create']['ok']
             #app.logger.info("result: %s" % pformat(result))
 
         result = conn.force_bulk()
-        for status in result['items']:
-            assert status['create']['ok']
+        if result:
+            for status in result['items']:
+                assert status['create']['ok']
         #TODO: ensure ok: true
-        app.logger.debug("force_bulk result: %s" % pformat(result))
+        #app.logger.debug("force_bulk result: %s" % pformat(result))
 
     return "ok"
 
