@@ -102,6 +102,7 @@ def batch():
     if extra.get('timestamp_as_id', False):
         index = [('_id', pymongo.DESCENDING)]
 
+        merged = {}
         for timestamp,data in _iter_records(spool):
             #spec = {'_id': timestamp}
 
@@ -118,6 +119,12 @@ def batch():
 
             if isinstance(data, dict):
                 data = [data]
+
+            results = merged.setdefault(timestamp, [])
+            results.extend(data)
+
+
+        for timestamp,data in merged.iteritems():
             timestamp = calendar.timegm( timestamp.timetuple() )
             data = dict(data=data)
             doc = dict(script="ctx._source.data += ($ in data if !ctx._source.data.contains($))", params=data)
