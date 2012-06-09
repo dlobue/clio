@@ -58,10 +58,10 @@ class ES(_ES):
         Force executing of all bulk data
         """
         if self.bulk_items:
-            r = self._send_request("POST", "/_bulk", self.bulk_data.getvalue())
+            bulk_data = self.bulk_data
             self.bulk_data = StringIO()
             self.bulk_items = 0
-            return r
+            return self._send_request("POST", "/_bulk", bulk_data.getvalue())
 
 
 @app.route("/batch_store", methods=['PUT', 'POST'])
