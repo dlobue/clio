@@ -1,5 +1,6 @@
 
 from datetime import datetime
+from random import randint
 import time
 import calendar
 import json
@@ -157,6 +158,7 @@ def batch():
                             app.logger.error("passed max retry! returning error!")
                             raise e
                         c += 1
+                        time.sleep(randint(1,9)/10.0)
                         continue
                     else:
                         app.logger.exception("doc: %s" % pformat(doc))
