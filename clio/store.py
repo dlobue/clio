@@ -52,48 +52,22 @@ def validify_data(data):
 from pyes import ES as _ES
 from pyes.exceptions import ElasticSearchException
 
-from gevent.core import timer
-from threading import Lock
-
-
 class ES(_ES):
-    def __init__(self, *args, **kwargs):
-        super(ES, self).__init__(*args, **kwargs)
-        self._timer = None
-        self._bulk_lock = Lock()
-
-    def flush_bulk(self, forced=False):
-        """
-        Wait to process all pending operations
-        """
-        if not forced and self.bulk_items < self.bulk_size:
-            with self._bulk_lock:
-                if self._timer is None:
-                    self._timer = timer(5, self.force_bulk)
-
-            return None
-        return self.force_bulk()
-
     def force_bulk(self):
         """
         Force executing of all bulk data
         """
-        with self._bulk_lock:
-            if self._timer is not None:
-                self._timer.cancel()
-                self._timer = None
-            if self.bulk_items:
-                bulk_data = self.bulk_data
-                self.bulk_data = StringIO()
-                self.bulk_items = 0
-                return self._send_request("POST", "/_bulk", bulk_data.getvalue())
+        if self.bulk_items:
+            bulk_data = self.bulk_data
+            self.bulk_data = StringIO()
+            self.bulk_items = 0
+            return self._send_request("POST", "/_bulk", bulk_data.getvalue())
 
-
-conn = ES('%s:%s' % (app.config['ES_HOST'], app.config['ES_PORT']), timeout=100)
 
 @app.route("/batch_store", methods=['PUT', 'POST'])
 def batch():
 
+    conn = ES('%s:%s' % (app.config['ES_HOST'], app.config['ES_PORT']), timeout=30)
 
     spool = StringIO(request.data)
 
@@ -227,11 +201,10 @@ def batch():
                         #assert status['create']['ok']
             #app.logger.info("result: %s" % pformat(result))
 
-        result = conn.flush_bulk()
-        #result = conn.force_bulk()
-        #if result:
-            #for status in result['items']:
-                #assert status['create']['ok']
+        result = conn.force_bulk()
+        if result:
+            for status in result['items']:
+                assert status['create']['ok']
         #TODO: ensure ok: true
         #app.logger.debug("force_bulk result: %s" % pformat(result))
 
