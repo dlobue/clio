@@ -147,7 +147,8 @@ def batch():
                         except ElasticSearchException, e:
                             if ((e.status == 409 and e.message.startswith(u'DocumentAlreadyExistsException'))
                                 or e.message.startswith(u'VersionConflictEngineException')):
-                                result = conn._send_request('POST', path, doc, {})
+                                c += 1
+                                continue
                             else:
                                 app.logger.exception("data: %s" % pformat(data))
                                 raise e
