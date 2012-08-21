@@ -7,6 +7,8 @@ from pprint import pformat
 from json import loads as json_loads
 import os.path
 from cStringIO import StringIO
+from cPickle import dumps as pickle_dumps
+from hashlib import sha1
 
 #from bson import json_util, BSON
 from bson.json_util import object_hook
@@ -168,12 +170,22 @@ def batch():
                        'data': data}
             return doc
 
+        multi = extra.get('multi', False)
 
-        for ts,data in _iter_records(spool, True):
+        for timestamp,data in _iter_records(spool):
+
+            recordid = [int(calendar.timegm( timestamp.timetuple() )), host]
+            if multi:
+                if multi in data:
+                    key_part =  data[multi]
+                else:
+                    key_part = sha1( pickle_dumps(data) ).hexdigest()
+                recordid.append( key_part )
+            recordid = recordid.join(':')
             try:
-                conn.index(_schema(ts,data), index_name, sourcetype, bulk=True)
+                conn.index(_schema(timestamp,data), index_name, sourcetype, id=recordid, bulk=True)
             except Exception, e:
-                app.logger.debug("data: %s" % pformat(data))
+                app.logger.exception("record id: %s, data: %s" % (recordid, pformat(data)))
                 raise e
 
         result = conn.force_bulk()
