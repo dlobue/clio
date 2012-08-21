@@ -97,67 +97,8 @@ def batch():
             else:
                 yield timestamp, data
 
-
-
-
     if extra.get('timestamp_as_id', False):
-        merged = {}
-        for timestamp,data in _iter_records(spool):
-
-
-
-
-            if isinstance(data, dict):
-                data = [data]
-
-            results = merged.setdefault(timestamp, [])
-            results.extend(data)
-
-
-        for timestamp,data in merged.iteritems():
-            timestamp = calendar.timegm( timestamp.timetuple() )
-            data = dict(data=data)
-            doc = dict(script="ctx._source.data += ($ in data if !ctx._source.data.contains($))", params=data)
-
-            path = conn._make_path([index_name, sourcetype, int(timestamp), '_update'])
-            c = 0
-            MAX_RETRY = 10
-            while 1:
-                try:
-                    result = conn._send_request('POST', path, doc, {})
-                except ElasticSearchException, e:
-                    if ((e.status == 404 and e.message.startswith(u'DocumentMissingException'))
-                        or e.message == u"Unknown exception type"):
-                        try:
-                            result = conn.index(data, index_name, sourcetype, id=int(timestamp), querystring_args=dict(op_type='create'))
-                            #XXX: may need to use querystring_args
-                            #querystring_args=dict(op_type='create')
-                        except ElasticSearchException, e:
-                            if ((e.status == 409 and e.message.startswith(u'DocumentAlreadyExistsException'))
-                                or e.message.startswith(u'VersionConflictEngineException')):
-                                c += 1
-                                continue
-                            else:
-                                app.logger.exception("data: %s" % pformat(data))
-                                raise e
-                    elif e.status == 409 and e.message.startswith(u'VersionConflictEngineException'):
-                        if c > MAX_RETRY:
-                            app.logger.error("passed max retry! returning error!")
-                            raise e
-                        c += 1
-                        time.sleep(randint(1,9)/10.0)
-                        continue
-                    else:
-                        app.logger.exception("doc: %s" % pformat(doc))
-                        raise e
-                break
-
-
-            #app.logger.debug("result: %s" % pformat(result))
-            assert result['ok']
-
-
-
+        process_timestamp_as_id(conn, sourcetype, index_name, _iter_records(spool))
 
     else:
 
@@ -196,6 +137,57 @@ def batch():
     return "ok"
 
 
+
+def process_timestamp_as_id(conn, sourcetype, index_name, records):
+    merged = {}
+    for timestamp,data in records:
+
+        if isinstance(data, dict):
+            data = [data]
+
+        results = merged.setdefault(timestamp, [])
+        results.extend(data)
+
+
+    for timestamp,data in merged.iteritems():
+        timestamp = calendar.timegm( timestamp.timetuple() )
+        data = dict(data=data)
+        doc = dict(script="ctx._source.data += ($ in data if !ctx._source.data.contains($))", params=data)
+
+        path = conn._make_path([index_name, sourcetype, int(timestamp), '_update'])
+        c = 0
+        MAX_RETRY = 10
+        while 1:
+            try:
+                result = conn._send_request('POST', path, doc, {})
+            except ElasticSearchException, e:
+                if ((e.status == 404 and e.message.startswith(u'DocumentMissingException'))
+                    or e.message == u"Unknown exception type"):
+                    try:
+                        result = conn.index(data, index_name, sourcetype, id=int(timestamp), querystring_args=dict(op_type='create'))
+                        #XXX: may need to use querystring_args
+                        #querystring_args=dict(op_type='create')
+                    except ElasticSearchException, e:
+                        if ((e.status == 409 and e.message.startswith(u'DocumentAlreadyExistsException'))
+                            or e.message.startswith(u'VersionConflictEngineException')):
+                            c += 1
+                            continue
+                        else:
+                            app.logger.exception("data: %s" % pformat(data))
+                            raise e
+                elif e.status == 409 and e.message.startswith(u'VersionConflictEngineException'):
+                    if c > MAX_RETRY:
+                        app.logger.error("passed max retry! returning error!")
+                        raise e
+                    c += 1
+                    time.sleep(randint(1,9)/10.0)
+                    continue
+                else:
+                    app.logger.exception("doc: %s" % pformat(doc))
+                    raise e
+            break
+
+        assert result['ok']
 
 
 @app.route("/store/<host>/<sourcetype>/<float:timestamp>", methods=['PUT', 'POST'])
