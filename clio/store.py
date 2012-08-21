@@ -163,7 +163,7 @@ def batch():
             if extra.get('custom_schema', False):
                 doc = data
             else:
-                doc = {'ts': timestamp,
+                doc = {'timestamp': timestamp,
                        'host': host,
                        'data': data}
             return doc
