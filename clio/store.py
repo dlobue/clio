@@ -76,6 +76,7 @@ def batch():
 
     app.logger.info("host: %s, sourcetype: %s" % (host, sourcetype))
 
+    index_name = 'clio_%s' % extra['started_timestamp'].strftime('%Y%m')
 
     def _iter_records(spool, validify=False):
         while 1:
@@ -116,7 +117,7 @@ def batch():
             data = dict(data=data)
             doc = dict(script="ctx._source.data += ($ in data if !ctx._source.data.contains($))", params=data)
 
-            path = conn._make_path(['clio', sourcetype, int(timestamp), '_update'])
+            path = conn._make_path([index_name, sourcetype, int(timestamp), '_update'])
             c = 0
             MAX_RETRY = 10
             while 1:
@@ -126,7 +127,7 @@ def batch():
                     if ((e.status == 404 and e.message.startswith(u'DocumentMissingException'))
                         or e.message == u"Unknown exception type"):
                         try:
-                            result = conn.index(data, 'clio', sourcetype, id=int(timestamp), querystring_args=dict(op_type='create'))
+                            result = conn.index(data, index_name, sourcetype, id=int(timestamp), querystring_args=dict(op_type='create'))
                             #XXX: may need to use querystring_args
                             #querystring_args=dict(op_type='create')
                         except ElasticSearchException, e:
@@ -170,7 +171,7 @@ def batch():
 
         for ts,data in _iter_records(spool, True):
             try:
-                conn.index(_schema(ts,data), 'clio', sourcetype, bulk=True)
+                conn.index(_schema(ts,data), index_name, sourcetype, bulk=True)
             except Exception, e:
                 app.logger.debug("data: %s" % pformat(data))
                 raise e
