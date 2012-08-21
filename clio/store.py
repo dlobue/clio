@@ -3,7 +3,7 @@ from datetime import datetime
 from random import randint
 import time
 import calendar
-import json
+from pprint import pformat
 from json import loads as json_loads
 import os.path
 from cStringIO import StringIO
@@ -76,8 +76,6 @@ def batch():
 
     app.logger.info("host: %s, sourcetype: %s" % (host, sourcetype))
 
-    #db = get_mongo_conn()
-    #coll = db['%s_%s' % (sourcetype, extra['started_timestamp'].strftime('%Y%m'))]
 
     def _iter_records(spool, validify=False):
         while 1:
@@ -98,25 +96,13 @@ def batch():
 
 
 
-    from pprint import pformat
 
     if extra.get('timestamp_as_id', False):
-        index = [('_id', pymongo.DESCENDING)]
-
         merged = {}
         for timestamp,data in _iter_records(spool):
-            #spec = {'_id': timestamp}
-
-            #if hasattr(data, '__iter__') and not hasattr(data, 'setdefault'):
-                #data = { '$each': data }
-            #data = {'$addToSet':
-                    #{'data': data }
-                   #}
 
 
-            #coll.ensure_index(index, background=True)
-            #coll.update(spec, data, upsert=True)
-            #TODO
+
 
             if isinstance(data, dict):
                 data = [data]
@@ -129,7 +115,6 @@ def batch():
             timestamp = calendar.timegm( timestamp.timetuple() )
             data = dict(data=data)
             doc = dict(script="ctx._source.data += ($ in data if !ctx._source.data.contains($))", params=data)
-            #doc = dict(script="ctx._source.data += data", params=data)
 
             path = conn._make_path(['clio', sourcetype, int(timestamp), '_update'])
             c = 0
@@ -142,7 +127,6 @@ def batch():
                         or e.message == u"Unknown exception type"):
                         try:
                             result = conn.index(data, 'clio', sourcetype, id=int(timestamp), querystring_args=dict(op_type='create'))
-                            #result = conn.index(dict(data=data), 'clio', sourcetype, id=int(timestamp), op_type='create')
                             #XXX: may need to use querystring_args
                             #querystring_args=dict(op_type='create')
                         except ElasticSearchException, e:
@@ -170,10 +154,9 @@ def batch():
             assert result['ok']
 
 
-    else:
 
-        index = [('host', pymongo.ASCENDING),
-                 ('ts', pymongo.DESCENDING)]
+
+    else:
 
         def _schema(timestamp, data):
             if extra.get('custom_schema', False):
@@ -184,29 +167,18 @@ def batch():
                        'data': data}
             return doc
 
-        #coll.ensure_index(index, background=True, unique=True)
-        #coll.insert((_schema(ts,data) for ts,data in _iter_records(spool, True)))
 
         for ts,data in _iter_records(spool, True):
-            #app.logger.debug("data: %s" % pformat(data))
             try:
                 conn.index(_schema(ts,data), 'clio', sourcetype, bulk=True)
             except Exception, e:
                 app.logger.debug("data: %s" % pformat(data))
                 raise e
-            #if conn.bulk_items > 10:
-                #result = conn.force_bulk()
-                #if result:
-                    #for status in result['items']:
-                        #assert status['create']['ok']
-            #app.logger.info("result: %s" % pformat(result))
 
         result = conn.force_bulk()
         if result:
             for status in result['items']:
                 assert status['create']['ok']
-        #TODO: ensure ok: true
-        #app.logger.debug("force_bulk result: %s" % pformat(result))
 
     return "ok"
 
