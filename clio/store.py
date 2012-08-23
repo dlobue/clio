@@ -98,9 +98,15 @@ def batch():
                 yield timestamp, data
 
     if extra.get('timestamp_as_id', False):
-        process_timestamp_as_id(conn, sourcetype, index_name, _iter_records(spool))
-
+        extra['multi'] = True
+        records = reformat_records(_iter_records(spool))
+        #process_timestamp_as_id(conn, sourcetype, index_name, _iter_records(spool))
     else:
+        records = _iter_records(spool)
+    process_standard_records(conn, sourcetype, index_name, extra, host, records)
+    return "ok"
+
+def process_standard_records(conn, sourcetype, index_name, extra, host, records):
 
         def _schema(timestamp, data):
             if extra.get('custom_schema', False):
@@ -113,7 +119,7 @@ def batch():
 
         multi = extra.get('multi', False)
 
-        for timestamp,data in _iter_records(spool):
+        for timestamp,data in records:
 
             recordid = [int(calendar.timegm( timestamp.timetuple() )), host]
             if multi:
@@ -137,9 +143,17 @@ def batch():
                 elif 'index' in status:
                     assert status['index']['ok'], pformat(status)
 
-    return "ok"
+def reformat_records(records):
+    def _reformat(data):
+        del data['from']
+        return data
 
-
+    for timestamp,data in records:
+        if isinstance(data, list):
+            for datum in data:
+                yield timestamp, _reformat(datum)
+            continue
+        yield timestamp, _reformat(data)
 
 def process_timestamp_as_id(conn, sourcetype, index_name, records):
     merged = {}
