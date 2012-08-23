@@ -51,19 +51,8 @@ def validify_data(data):
             data[key.replace('.', '__DOT__')] = data.pop(key)
     return data
 
-from pyes import ES as _ES
+from pyes import ES
 from pyes.exceptions import ElasticSearchException
-
-class ES(_ES):
-    def force_bulk(self):
-        """
-        Force executing of all bulk data
-        """
-        if self.bulk_items:
-            bulk_data = self.bulk_data
-            self.bulk_data = StringIO()
-            self.bulk_items = 0
-            return self._send_request("POST", "/_bulk", bulk_data.getvalue())
 
 
 @app.route("/batch_store", methods=['PUT', 'POST'])

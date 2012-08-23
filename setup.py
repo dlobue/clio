@@ -25,6 +25,7 @@ setup(name='clio',
           "flask>=0.6.1",
           "gunicorn>=0.12.2",
           "gevent>=0.13.5, <0.14",
+          "pyes>=0.19.0",
       ],
       entry_points="""
       # -*- Entry points: -*-
