@@ -132,7 +132,10 @@ def batch():
         result = conn.force_bulk()
         if result:
             for status in result['items']:
-                assert status['create']['ok']
+                if 'create' in status:
+                    assert status['create']['ok'], pformat(status)
+                elif 'index' in status:
+                    assert status['index']['ok'], pformat(status)
 
     return "ok"
 
