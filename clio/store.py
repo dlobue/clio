@@ -79,6 +79,8 @@ def batch():
     app.logger.info("host: %s, sourcetype: %s" % (host, sourcetype))
 
     index_name = 'clio_%s' % extra['started_timestamp'].strftime('%Y%m')
+    #db = get_mongo_conn()
+    #coll = db['%s_%s' % (sourcetype, extra['started_timestamp'].strftime('%Y%m'))]
 
     def _iter_records(spool, validify=False):
         while 1:
