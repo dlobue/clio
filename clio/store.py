@@ -122,7 +122,7 @@ def batch():
                 else:
                     key_part = sha1( pickle_dumps(data) ).hexdigest()
                 recordid.append( key_part )
-            recordid = recordid.join(':')
+            recordid = ':'.join(map(str, recordid))
             try:
                 conn.index(_schema(timestamp,data), index_name, sourcetype, id=recordid, bulk=True)
             except Exception, e:
