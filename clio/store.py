@@ -110,6 +110,7 @@ def process_standard_records(conn, sourcetype, index_name, extra, host, records)
 
         multi = extra.get('multi', False)
 
+        c = 0
         for timestamp,data in records:
 
             recordid = [int(calendar.timegm( timestamp.timetuple() )), host]
@@ -125,6 +126,15 @@ def process_standard_records(conn, sourcetype, index_name, extra, host, records)
             except Exception, e:
                 app.logger.exception("record id: %s, data: %s" % (recordid, pformat(data)))
                 raise e
+            c+=1
+            if not c % 100:
+                result = conn.flush_bulk()
+                if result:
+                    for status in result['items']:
+                        if 'create' in status:
+                            assert status['create']['ok'], pformat(status)
+                        elif 'index' in status:
+                            assert status['index']['ok'], pformat(status)
 
         result = conn.force_bulk()
         if result:
