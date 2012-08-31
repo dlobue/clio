@@ -445,7 +445,7 @@ class receiver(object):
 
 
 
-def json_encode_default(self, value):
+def json_encode_default(value):
 
     if isinstance(value, datetime):
         return value.isoformat()
