@@ -268,7 +268,7 @@ class indexer(object):
                     es.request('POST', '/_bulk', body=bulk_data)
                     bulkresult = es.getresponse()
                 except Exception:
-                    logger.exception()
+                    logger.exception('halp!')
                     sleep(5)
                     continue
                 #TODO: timeout
