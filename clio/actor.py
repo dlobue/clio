@@ -239,6 +239,8 @@ from uuid import uuid4
 from collections import deque
 import httplib
 
+
+
 class indexer(object):
     def __init__(self, registry, host='localhost', port=9200, timeout=300):
         self.registry = registry
@@ -249,13 +251,17 @@ class indexer(object):
     def run(self):
         es = httplib.HTTPConnection(self.host, self.port, timeout=self.timeout)
         registry = self.registry
+        logger.info("starting indexer")
 
         while 1:
-            sleep(5)
+            registry.bulk_rest.wait(5)
+            registry.bulk_rest.clear()
             bulk_ids, bulk_data = registry.flush_bulk()
             if bulk_data is None:
                 logger.info("queue empty")
                 continue
+            logger.info("starting persist run")
+            registry.bulk_run.set()
             while 1:
                 bulk_data.seek(0)
                 try:
@@ -268,6 +274,7 @@ class indexer(object):
                 #TODO: timeout
                 if bulkresult.status in (200,201,202):
                     self.verify(bulkresult.read())
+                    registry.bulk_run.clear()
                     break
                 logger.error(bulkresult.read())
                 sleep(5)
@@ -294,15 +301,35 @@ class indexer(object):
 
 from datetime import date, datetime
 from json import dump
-from threading import Lock
+from threading import Lock, Event
 
 class registry(object):
-    def __init__(self):
+    def __init__(self, bulk_threshold=10*1024*1024):
+        self.bulk_threshold = bulk_threshold
         self.record_registry = {}
         self.receipt_registry = {}
+        self.queue_not_full = Event()
+        self.queue_not_full.set()
+        self.bulk_run = Event()
+        self.bulk_rest = Event()
         self._bulk_lock = Lock()
         self.bulk_ids = deque()
         self.bulk_data = StringIO()
+
+    def queue_ready(self):
+        deadlock = False
+        while 1:
+            ready = self.queue_not_full.wait(60)
+            if ready:
+                return
+            elif not self.bulk_run.is_set():
+                if not deadlock:
+                    deadlock = True
+                else:
+                    logger.error("deadlock detected! going to set queue_not_full event")
+                    self.queue_not_full.set()
+                    return
+            logger.info("waiting on persist client to finish so next batch can start")
 
     def add_bulk(self, recordid, (doc, index_name, sourcetype)):
         logger.info("adding record %s to bulk queue" % recordid)
@@ -313,15 +340,27 @@ class registry(object):
                 dump(data, self.bulk_data, default=json_encode_default)
                 self.bulk_data.write('\n')
 
+        if self.bulk_data.tell() >= self.bulk_threshold:
+            #start the bulk persist early
+            if self.bulk_run.is_set():
+                # if the persist client is in the middle of a trip and the
+                # queue is full, clear the queue_not_full event so the
+                # persister waits
+                self.queue_not_full.clear()
+
+            self.bulk_rest.set()
+
 
     def flush_bulk(self):
         if not self.bulk_ids:
             return None, None
+
         with self._bulk_lock:
             bulk_data = self.bulk_data
             record_ids = self.bulk_ids
             self.bulk_ids = deque()
             self.bulk_data = StringIO()
+        self.queue_not_full.set()
         return record_ids, bulk_data
 
     def register_spool(self, receipt, records):
@@ -359,6 +398,7 @@ class receiver(object):
 
     def main(self, socket):
         while 1:
+            self.registry.queue_ready()
             message = socket.recv_json()
             dict(persist=self.handle_persist,
                  check=self.handle_check)[message['action']](socket, message)
