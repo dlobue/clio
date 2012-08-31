@@ -277,7 +277,7 @@ class indexer(object):
                     continue
                 #TODO: timeout
                 if bulkresult.status in (200,201,202):
-                    self.verify(bulkresult.read())
+                    self.verify(bulkresult)
                     registry.bulk_run.clear()
                     break
                 logger.error(bulkresult.read())
@@ -288,8 +288,7 @@ class indexer(object):
         if not bulkresult:
             return None
 
-        if isinstance(bulkresult, basestring):
-            bulkresult = json_loads(bulkresult)
+        bulkresult = load(bulkresult)
         logger.info("verifying individual results from bulk request")
         for status in bulkresult['items']:
             for result in status.itervalues():
@@ -306,7 +305,7 @@ class indexer(object):
 
 
 from datetime import date, datetime
-from json import dump
+from json import dump, load
 #from threading import Lock, Event
 from gevent.event import Event
 from gevent.coros import RLock
