@@ -273,45 +273,6 @@ class indexer(object):
                 sleep(5)
 
 
-    def _run(self, queue=None):
-        es = self.es
-        if queue is None:
-            queue = self.registry.insert_queue
-
-        while 1:
-            try:
-                msg = queue.popleft()
-            except IndexError:
-                #sleep(0)
-                #if queue:
-                    #continue
-                logger.info("queue empty")
-                bulkresult = es.force_bulk()
-                self.verify(bulkresult)
-                if bulkresult is None:
-                    #TODO: make sure all spools have been emptied.
-                    pass
-                sleep(1)
-                continue
-
-            try:
-                (recordid, (doc, index_name, sourcetype)) = msg
-            except ValueError:
-                logger.error("data put into queue was in bad format: %s" % pformat(msg))
-                #TODO: determine how best to recover
-                raise
-
-            logger.info("adding record %s to bulk queue" % recordid)
-            try:
-                es.index(doc, index_name, sourcetype, id=recordid, bulk=True)
-            except Exception, e:
-                logger.exception(pformat(dict(recordid=recordid, doc=doc, index_name=index_name, sourcetype=sourcetype)))
-                raise e
-
-            bulkresult = es.flush_bulk()
-            self.verify(bulkresult)
-
-
     def verify(self, bulkresult):
         if not bulkresult:
             return None
