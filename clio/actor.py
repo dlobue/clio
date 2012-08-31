@@ -19,8 +19,8 @@ logger = logging.getLogger('clio')
 
 
 
-from pyes import ES
-from pyes.exceptions import ElasticSearchException
+#from pyes import ES
+#from pyes.exceptions import ElasticSearchException
 
 #from bson import json_util, BSON
 from bson.json_util import object_hook
@@ -232,17 +232,48 @@ class record_spool(object):
         'True if done'
         return not self.records
 
-from gevent import spawn, sleep, joinall
+from gevent import spawn, sleep, joinall, monkey
+monkey.patch_all(httplib=True)
 import zmq.green as zmq
 from uuid import uuid4
 from collections import deque
+import httplib
 
 class indexer(object):
-    def __init__(self, registry):
+    def __init__(self, registry, host='localhost', port=9200, timeout=300):
         self.registry = registry
-        self.es = ES('%s:%s' % ('192.168.56.13', '9200'), timeout=305)
+        self.host = host
+        self.port = port
+        self.timeout = timeout
 
-    def run(self, queue=None):
+    def run(self):
+        es = httplib.HTTPConnection(self.host, self.port, timeout=self.timeout)
+        registry = self.registry
+
+        while 1:
+            sleep(5)
+            bulk_ids, bulk_data = registry.flush_bulk()
+            if bulk_data is None:
+                logger.info("queue empty")
+                continue
+            while 1:
+                bulk_data.seek(0)
+                try:
+                    es.request('POST', '/_bulk', body=bulk_data)
+                    bulkresult = es.getresponse()
+                except Exception:
+                    logger.exception()
+                    sleep(5)
+                    continue
+                #TODO: timeout
+                if bulkresult.status in (200,201,202):
+                    self.verify(bulkresult.read())
+                    break
+                logger.error(bulkresult.read())
+                sleep(5)
+
+
+    def _run(self, queue=None):
         es = self.es
         if queue is None:
             queue = self.registry.insert_queue
@@ -257,6 +288,9 @@ class indexer(object):
                 logger.info("queue empty")
                 bulkresult = es.force_bulk()
                 self.verify(bulkresult)
+                if bulkresult is None:
+                    #TODO: make sure all spools have been emptied.
+                    pass
                 sleep(1)
                 continue
 
@@ -297,18 +331,43 @@ class indexer(object):
 
 
 
-
+from datetime import date, datetime
+from json import dump
+from threading import Lock
 
 class registry(object):
     def __init__(self):
         self.record_registry = {}
         self.receipt_registry = {}
-        self.insert_queue = deque()
+        self._bulk_lock = Lock()
+        self.bulk_ids = deque()
+        self.bulk_data = StringIO()
+
+    def add_bulk(self, recordid, (doc, index_name, sourcetype)):
+        logger.info("adding record %s to bulk queue" % recordid)
+        header = dict(index=dict(_index=index_name, _type=sourcetype, _id=recordid))
+        with self._bulk_lock:
+            self.bulk_ids.append(recordid)
+            for data in (header, doc):
+                dump(data, self.bulk_data, default=json_encode_default)
+                self.bulk_data.write('\n')
+
+
+    def flush_bulk(self):
+        if not self.bulk_ids:
+            return None, None
+        with self._bulk_lock:
+            bulk_data = self.bulk_data
+            record_ids = self.bulk_ids
+            self.bulk_ids = deque()
+            self.bulk_data = StringIO()
+        return record_ids, bulk_data
 
     def register_spool(self, receipt, records):
         logger.info("registering spool of records for receipt %s" % receipt)
+        add_bulk = self.add_bulk
         def _insert(item):
-            self.insert_queue.append(item)
+            add_bulk(*item)
             return item
         records = (_insert(_) for _ in records)
         rspool = record_spool(receipt, dict(records))
@@ -324,7 +383,7 @@ class registry(object):
         #TODO: add registry of number of failed attempts for a record
         spool_obj = self.record_registry[recordid]
         record_obj = spool_obj.records[recordid]
-        self.insert_queue.append_left(record_obj)
+        self.add_bulk(recordid, record_obj)
 
     def completed_record(self, recordid):
         logger.info("record successfully persisted: %s" % recordid)
@@ -371,28 +430,49 @@ class receiver(object):
 
 
 
+def json_encode_default(self, value):
 
+    if isinstance(value, datetime):
+        return value.isoformat()
+    elif isinstance(value, date):
+        dt = datetime(value.year, value.month, value.day, 0, 0, 0)
+        return dt.isoformat()
+    return value
+
+from gevent.backdoor import BackdoorServer
 
 if __name__ == '__main__':
 
     logger.setLevel(logging.DEBUG)
     loggerHandler = logging.StreamHandler(sys.stdout)
     loggerHandler.setLevel(logging.DEBUG)
-    loggerFormatter = logging.Formatter('%(asctime)s [%(name)s] [%(funcName)s] [%(thread)d] %(levelname)s: %(message)s')
+    loggerFormatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
     loggerHandler.setFormatter(loggerFormatter)
     logger.addHandler(loggerHandler)
 
+
+    try:
+        host = sys.argv[1]
+    except:
+        host = 'localhost'
+    try:
+        port = int(sys.argv[2])
+    except:
+        port = 9200
     threads = []
     spool_register = registry()
-    the_indexer = indexer(spool_register)
-    threads.append(spawn(the_indexer.run))
+    the_indexer = indexer(spool_register, host=host, port=port)
     the_receiver = receiver(spool_register, 'something')
 
 
     context = zmq.Context()
     sock = context.socket(zmq.REP)
-    sock.bind('tcp://0.0.0.0:4242')
+    sock.bind('tcp://0.0.0.0:64000')
 
+    #b = BackdoorServer(('127.0.0.1', 60000), locals=dict(spool_register=spool_register, the_indexer=the_indexer, the_receiver=the_receiver))
+    #threads.append(spawn(b.serve_forever))
+
+    threads.append(spawn(the_indexer.run))
     threads.append(spawn(the_receiver.main, sock))
 
     joinall(threads)
