@@ -17,11 +17,6 @@ logger = logging.getLogger('clio')
 
 
 
-#from gevent import monkey
-#monkey.patch_all()
-#import zerorpc
-from pykka.gevent import GeventActor
-from pykka.registry import ActorRegistry
 
 
 from pyes import ES
@@ -366,40 +361,16 @@ class receiver(object):
 
         if status:
             del self.registry.receipt_registry[message['data']]
-        #else:
-            #logger.info("spool still has records that haven't been indexed: %s" % pformat(self.registry.receipt_registry[message['data']].records))
-            #logger.info("queue: %s" % pformat(self.registry.insert_queue))
 
         socket.send_json(dict(status=status))
-        #TODO: remove receipt from registry
 
 
 
-def _handle(message):
-    result = es.flush_bulk()
-    if result:
-        for status in result['items']:
-            if 'create' in status:
-                assert status['create']['ok'], pformat(status)
-            elif 'index' in status:
-                assert status['index']['ok'], pformat(status)
 
 
 
-class ESActor(GeventActor):
-    def __init__(self):
-        self.es = ES('%s:%s' % ('192.168.56.13', '9200'), timeout=305)
 
-    def queue_data(self, data):
-        process(self.es, data)
 
-        result = self.es.flush_bulk()
-        if result:
-            for status in result['items']:
-                if 'create' in status:
-                    assert status['create']['ok'], pformat(status)
-                elif 'index' in status:
-                    assert status['index']['ok'], pformat(status)
 
 
 if __name__ == '__main__':
@@ -425,21 +396,5 @@ if __name__ == '__main__':
     threads.append(spawn(the_receiver.main, sock))
 
     joinall(threads)
-
-
-
-
-
-
-    #s = zerorpc.Server(ESActor.start())
-    #s.bind("tcp://0.0.0.0:4242")
-    #try:
-        #joinall([spawn(s.run)])
-        #s.run()
-    #except KeyboardInterrupt:
-        #ActorRegistry.stop_all()
-
-
-
 
 
