@@ -262,10 +262,12 @@ class indexer(object):
             if bulk_data is None:
                 logger.info("queue empty")
                 continue
+            elif not isinstance(bulk_data, basestring):
+                bulk_data = bulk_data.getvalue()
+
             logger.info("starting persist run")
             registry.bulk_run.set()
             while 1:
-                bulk_data.seek(0)
                 try:
                     es.request('POST', '/_bulk', body=bulk_data)
                     bulkresult = es.getresponse()
