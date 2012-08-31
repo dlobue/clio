@@ -241,6 +241,8 @@ import httplib
 
 
 
+
+
 class indexer(object):
     def __init__(self, registry, host='localhost', port=9200, timeout=300):
         self.registry = registry
@@ -303,10 +305,14 @@ class indexer(object):
 
 from datetime import date, datetime
 from json import dump
-from threading import Lock, Event
+#from threading import Lock, Event
+from gevent.event import Event
+from gevent.coros import RLock
+
+BULKTHRESHOLD = 10*1024*1024
 
 class registry(object):
-    def __init__(self, bulk_threshold=10*1024*1024):
+    def __init__(self, bulk_threshold=BULKTHRESHOLD):
         self.bulk_threshold = bulk_threshold
         self.record_registry = {}
         self.receipt_registry = {}
@@ -314,7 +320,7 @@ class registry(object):
         self.queue_not_full.set()
         self.bulk_run = Event()
         self.bulk_rest = Event()
-        self._bulk_lock = Lock()
+        self._bulk_lock = RLock()
         self.bulk_ids = deque()
         self.bulk_data = StringIO()
 
@@ -342,19 +348,21 @@ class registry(object):
                 dump(data, self.bulk_data, default=json_encode_default)
                 self.bulk_data.write('\n')
 
-        if self.bulk_data.tell() >= self.bulk_threshold:
-            #start the bulk persist early
-            if self.bulk_run.is_set():
-                # if the persist client is in the middle of a trip and the
-                # queue is full, clear the queue_not_full event so the
-                # persister waits
-                self.queue_not_full.clear()
+            if self.bulk_data.tell() >= self.bulk_threshold:
+                logger.info("queue has surpassed threshold")
+                #start the bulk persist early
+                if self.bulk_run.is_set():
+                    # if the persist client is in the middle of a trip and the
+                    # queue is full, clear the queue_not_full event so the
+                    # persister waits
+                    logger.info("persist client running, and queue is full. clear queue_not_full flag")
+                    self.queue_not_full.clear()
 
             self.bulk_rest.set()
 
 
     def flush_bulk(self):
-        if not self.bulk_ids:
+        if not self.bulk_data.tell():
             return None, None
 
         with self._bulk_lock:
@@ -362,7 +370,9 @@ class registry(object):
             record_ids = self.bulk_ids
             self.bulk_ids = deque()
             self.bulk_data = StringIO()
-        self.queue_not_full.set()
+
+            self.queue_not_full.set()
+        logger.info("bulk queue flushed, so there is definitely room in the queue. set the flag")
         return record_ids, bulk_data
 
     def register_spool(self, receipt, records):
@@ -457,7 +467,7 @@ if __name__ == '__main__':
     try:
         host = sys.argv[1]
     except:
-        host = 'localhost'
+        host = '127.0.0.1'
     try:
         port = int(sys.argv[2])
     except:
