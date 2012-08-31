@@ -233,7 +233,7 @@ class record_spool(object):
         return not self.records
 
 from gevent import spawn, sleep, joinall, monkey
-monkey.patch_all(httplib=True)
+monkey.patch_all()
 import zmq.green as zmq
 from uuid import uuid4
 from collections import deque
