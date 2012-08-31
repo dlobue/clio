@@ -232,13 +232,10 @@ class record_spool(object):
         'True if done'
         return not self.records
 
-from gevent import spawn, sleep, joinall, monkey
-monkey.patch_all()
+from gevent import spawn, sleep, joinall
 import zmq.green as zmq
 from uuid import uuid4
-from collections import deque
-import httplib
-
+from geventhttpclient import httplib
 
 
 
@@ -306,7 +303,6 @@ class indexer(object):
 
 from datetime import date, datetime
 from json import dump, load
-#from threading import Lock, Event
 from gevent.event import Event
 from gevent.coros import RLock
 
