@@ -325,10 +325,12 @@ class registry(object):
         self.bulk_data = StringIO()
 
     def queue_ready(self):
+        logger.info("making sure the queue is ready for us to put stuff in it")
         deadlock = False
         while 1:
             ready = self.queue_not_full.wait(60)
             if ready:
+                logger.info("ready to start filling up queue")
                 return
             elif not self.bulk_run.is_set():
                 if not deadlock:
