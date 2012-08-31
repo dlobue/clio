@@ -284,6 +284,8 @@ class indexer(object):
         if not bulkresult:
             return None
 
+        if isinstance(bulkresult, basestring):
+            bulkresult = json_loads(bulkresult)
         logger.info("verifying individual results from bulk request")
         for status in bulkresult['items']:
             for result in status.itervalues():
