@@ -258,7 +258,7 @@ class indexer(object):
         while 1:
             registry.bulk_rest.wait(5)
             registry.bulk_rest.clear()
-            bulk_ids, bulk_data = registry.flush_bulk()
+            bulk_data = registry.flush_bulk()
             if bulk_data is None:
                 logger.info("queue empty")
                 continue
@@ -321,7 +321,6 @@ class registry(object):
         self.bulk_run = Event()
         self.bulk_rest = Event()
         self._bulk_lock = RLock()
-        self.bulk_ids = deque()
         self.bulk_data = StringIO()
 
     def queue_ready(self):
@@ -345,7 +344,6 @@ class registry(object):
         logger.info("adding record %s to bulk queue" % recordid)
         header = dict(index=dict(_index=index_name, _type=sourcetype, _id=recordid))
         with self._bulk_lock:
-            self.bulk_ids.append(recordid)
             for data in (header, doc):
                 dump(data, self.bulk_data, default=json_encode_default)
                 self.bulk_data.write('\n')
@@ -365,17 +363,15 @@ class registry(object):
 
     def flush_bulk(self):
         if not self.bulk_data.tell():
-            return None, None
+            return None
 
         with self._bulk_lock:
             bulk_data = self.bulk_data
-            record_ids = self.bulk_ids
-            self.bulk_ids = deque()
             self.bulk_data = StringIO()
 
             self.queue_not_full.set()
         logger.info("bulk queue flushed, so there is definitely room in the queue. set the flag")
-        return record_ids, bulk_data
+        return bulk_data
 
     def register_spool(self, receipt, records):
         logger.info("registering spool of records for receipt %s" % receipt)
