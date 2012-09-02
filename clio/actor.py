@@ -29,11 +29,9 @@ BULKTHRESHOLD = 2*1024*1024
 
 
 class record_spool(object):
-    def __init__(self, urn, records):
+    def __init__(self, urn):
         self.urn = urn
-        if not isinstance(records, dict):
-            records = dict(records)
-        self.records = records
+        self.records = {}
 
     def __nonzero__(self):
         'True if done'
@@ -177,13 +175,17 @@ class registry(object):
     def register_spool(self, receipt, records):
         logger.info("registering spool of records for receipt %s" % receipt)
         add_bulk = self.add_bulk
-        def _insert(item):
-            add_bulk(*item)
-            return item
-        records = (_insert(_) for _ in records)
-        rspool = record_spool(receipt, dict(records))
+        update_record_registry = self.record_registry.update
+
+        def _insert(recordid, record):
+            update_record_registry( ((recordid,rspool),) )
+            add_bulk(recordid, record)
+            return recordid, record
+
+        rspool = record_spool(receipt)
         self.receipt_registry[receipt] = rspool
-        self.record_registry.update( ((_, rspool) for _ in rspool.records.iterkeys()) )
+        records = (_insert(*_) for _ in records)
+        rspool.records.update(records)
 
     def check_spool_status(self, receipt):
         logger.info("checking the status of the records from spool for receipt: %s" % receipt)
