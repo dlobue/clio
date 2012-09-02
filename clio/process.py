@@ -1,54 +1,32 @@
 
-
 import calendar
 from json import loads as json_loads
 from cStringIO import StringIO
 from cPickle import dumps as pickle_dumps
 from hashlib import sha1
+from struct import unpack_from, error
 
 import logging
 
 logger = logging.getLogger('clio')
 
-
-
-
-
-
-#from bson import json_util, BSON
 from bson.json_util import object_hook
 
 
-def validify_data(data):
-    if not isinstance(data, dict):
-        return data
-
-    for key in data.iterkeys():
-        if isinstance(data[key], dict):
-            data[key] = validify_data(data[key])
-        if '.' in key:
-            data[key.replace('.', '__DOT__')] = data.pop(key)
-    return data
-
-
-
-def _iter_records(spool, validify=False):
+def _iter_records(dataframe, pos):
     while 1:
-        lenprefix = spool.readline()
-        if not lenprefix:
+
+        try:
+            recordlength = unpack_from('>L', dataframe, pos)[0]
+        except error:
             break
-        lenprefix = int(lenprefix)
-        record = spool.read(lenprefix)
+        pos += 4
+        recordbuf = buffer(dataframe, pos, recordlength)
+        pos += recordlength
 
-        if len(record) != lenprefix:
-            logger.error("Malformed record!")
-
-        timestamp, data = json_loads(record, object_hook=object_hook)
-        if validify:
-            yield timestamp, validify_data(data)
-        else:
-            yield timestamp, data
-
+        timestamp,data = json_loads(str(recordbuf),
+                                    object_hook=object_hook)
+        yield timestamp, data
 
 
 def process_records(sourcetype, index_name, extra, host, records):
@@ -66,14 +44,14 @@ def process_records(sourcetype, index_name, extra, host, records):
 
         for timestamp,data in records:
 
-            recordid = [int(calendar.timegm( timestamp.timetuple() )), host]
+            recordid = [str(int(calendar.timegm( timestamp.timetuple() ))), host]
             if multi:
                 if multi in data:
                     key_part =  data[multi]
                 else:
                     key_part = sha1( pickle_dumps(data) ).hexdigest()
                 recordid.append( key_part )
-            recordid = ':'.join(map(str, recordid))
+            recordid = ':'.join(recordid)
 
             yield (recordid, (_schema(timestamp,data), index_name, sourcetype))
 
@@ -90,22 +68,20 @@ def reformat_records(records):
             continue
         yield timestamp, _reformat(data)
 
-def process(data):
-
-    spool = StringIO(data)
-
-    record = spool.read(int(spool.readline()))
-    host,sourcetype,extra = json_loads(record, object_hook=object_hook)
-
+def process(dataframe):
+    header_size = unpack_from('>L', dataframe, 0)[0]
+    headerbuf = buffer(dataframe, 4, header_size)
+    data = json_loads(str(headerbuf), object_hook=object_hook)
+    host,sourcetype,extra = data
     logger.info("host: %s, sourcetype: %s" % (host, sourcetype))
 
     index_name = 'clio_%s' % extra['started_timestamp'].strftime('%Y%m')
 
+    records = _iter_records(dataframe, header_size+4)
     if extra.get('timestamp_as_id', False):
         extra['multi'] = True
-        records = reformat_records(_iter_records(spool))
-    else:
-        records = _iter_records(spool)
+        records = reformat_records(records)
     return process_records(sourcetype, index_name, extra, host, records)
+
 
 
