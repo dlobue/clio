@@ -16,7 +16,7 @@ import logging
 
 logger = logging.getLogger('clio')
 
-from gevent import spawn, sleep, joinall
+from gevent import spawn, sleep, joinall, killall
 from gevent.event import Event
 from gevent.coros import RLock
 import zmq.green as zmq
@@ -273,6 +273,14 @@ if __name__ == '__main__':
     threads.append(spawn(the_indexer.run))
     threads.append(spawn(the_receiver.main, sock))
 
-    joinall(threads)
+    def die_in_death(_):
+        killall(threads)
+
+    [_.link_exception(die_in_death) for _ in threads]
+    try:
+        joinall(threads)
+    except KeyboardInterrupt:
+        pass
+
 
 
