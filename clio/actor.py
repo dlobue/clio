@@ -1,4 +1,11 @@
 
+
+try:
+    import xtraceback
+    xtraceback.compat.install()
+except ImportError:
+    pass
+
 from datetime import date, datetime
 from json import dump, load
 from uuid import uuid4
