@@ -26,6 +26,10 @@ from clio.process import process
 
 BULKTHRESHOLD = 2*1024*1024
 
+ERROR = '\xff'
+SUCCESS = '\x00'
+NOTDONE = '\x01'
+
 
 
 class record_spool(object):
@@ -189,7 +193,8 @@ class registry(object):
 
     def check_spool_status(self, receipt):
         logger.info("checking the status of the records from spool for receipt: %s" % receipt)
-        return bool( self.receipt_registry[receipt] )
+        if receipt in self.receipt_registry:
+            return bool( self.receipt_registry[receipt] )
 
     def failed_record(self, recordid):
         logger.info("record failed insertion in index: %s" % recordid)
@@ -226,17 +231,18 @@ class receiver(object):
         #socket.send_pyobj((self.address, receipt))
         #TODO: send receipt back to client with our 'address'
 
-    def handle_check(self, socket, message):
-        try:
-            status = self.registry.check_spool_status(message['data'])
-        except KeyError:
-            socket.send_json(dict(status=None))
-            return
+    def handle_check(self, socket):
+        receipt = socket.recv()
+        status = self.registry.check_spool_status(receipt)
 
         if status:
-            del self.registry.receipt_registry[message['data']]
+            del self.registry.receipt_registry[receipt]
 
-        socket.send_json(dict(status=status))
+        socket.send({
+            True: SUCCESS,
+            False: NOTDONE,
+            None: ERROR
+        }[status])
 
 
 
