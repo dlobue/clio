@@ -212,16 +212,17 @@ class receiver(object):
     def main(self, socket):
         while 1:
             self.registry.queue_ready()
-            message = socket.recv_json()
+            action = socket.recv()
             dict(persist=self.handle_persist,
-                 check=self.handle_check)[message['action']](socket, message)
+                 check=self.handle_check)[action](socket)
             sleep(0)
 
 
-    def handle_persist(self, socket, message):
+    def handle_persist(self, socket):
         receipt = uuid4().urn
-        self.registry.register_spool(receipt, process(message['data']))
-        socket.send(receipt)
+        data = socket.recv(copy=False)
+        self.registry.register_spool(receipt, process(data))
+        socket.send_multipart((self.address, receipt))
         #socket.send_pyobj((self.address, receipt))
         #TODO: send receipt back to client with our 'address'
 
@@ -261,11 +262,12 @@ if __name__ == '__main__':
     threads = []
     spool_register = registry()
     the_indexer = indexer(spool_register, host=host, port=port)
-    the_receiver = receiver(spool_register, 'something')
+    the_receiver = receiver(spool_register, 'clio')
 
 
     context = zmq.Context()
     sock = context.socket(zmq.REP)
+    sock.setsockopt(zmq.IDENTITY, 'clio')
     sock.bind('tcp://0.0.0.0:64000')
 
     #from gevent.backdoor import BackdoorServer
