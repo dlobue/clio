@@ -121,6 +121,7 @@ class registry(object):
         self.record_registry = {}
         self.receipt_registry = {}
         self.pause_indexing = Event()
+        self.pause_indexing.set()
         self.queue_not_full = Event()
         self.queue_not_full.set()
         self.bulk_run = Event()
