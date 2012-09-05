@@ -216,7 +216,6 @@ class receiver(object):
 
     def main(self, socket):
         while 1:
-            self.registry.queue_ready()
             action = socket.recv()
             dict(persist=self.handle_persist,
                  check=self.handle_check)[action](socket)
@@ -224,6 +223,7 @@ class receiver(object):
 
 
     def handle_persist(self, socket):
+        self.registry.queue_ready()
         receipt = uuid4().urn
         data = socket.recv(copy=False)
         self.registry.register_spool(receipt, process(data))
