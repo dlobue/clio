@@ -11,6 +11,7 @@ from json import dump, load
 from uuid import uuid4
 from pprint import pformat
 from cStringIO import StringIO
+import signal
 import sys
 import logging
 
@@ -119,17 +120,25 @@ class registry(object):
         self.bulk_threshold = bulk_threshold
         self.record_registry = {}
         self.receipt_registry = {}
+        self.pause_indexing = Event()
         self.queue_not_full = Event()
         self.queue_not_full.set()
         self.bulk_run = Event()
         self.bulk_rest = Event()
         self._bulk_lock = RLock()
         self.bulk_data = StringIO()
+        signal.signal(signal.SIGUSR1, self.toggle_pause)
+
+    def toggle_pause(self, *args, **kwargs):
+        if self.pause_indexing.is_set():
+            return self.pause_indexing.clear()
+        return self.pause_indexing.set()
 
     def queue_ready(self):
         logger.info("making sure the queue is ready for us to put stuff in it")
         deadlock = False
         while 1:
+            self.pause_indexing.wait()
             ready = self.queue_not_full.wait(60)
             if ready:
                 logger.info("ready to start filling up queue")
@@ -165,6 +174,7 @@ class registry(object):
 
 
     def flush_bulk(self):
+        self.pause_indexing.wait()
         if not self.bulk_data.tell():
             return None
 
