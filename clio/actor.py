@@ -61,8 +61,11 @@ class indexer(object):
         self.port = port
         self.timeout = timeout
 
+    def get_conn(self):
+        return httplib.HTTPConnection(self.host, self.port, timeout=self.timeout)
+
     def run(self):
-        es = httplib.HTTPConnection(self.host, self.port, timeout=self.timeout)
+        es = self.get_conn()
         registry = self.registry
         logger.info("starting indexer")
 
@@ -82,6 +85,10 @@ class indexer(object):
                 try:
                     es.request('POST', '/_bulk', body=bulk_data)
                     bulkresult = es.getresponse()
+                except httplib.CannotSendRequest:
+                    logger.warn("got a cannotsendrequest error from httplib. throwing that instance away and getting a new one.")
+                    es = self.get_conn()
+                    continue
                 except Exception:
                     logger.exception('halp!')
                     sleep(5)
