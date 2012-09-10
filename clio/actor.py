@@ -199,15 +199,12 @@ class registry(object):
         add_bulk = self.add_bulk
         update_record_registry = self.record_registry.update
 
-        def _insert(recordid, record):
-            update_record_registry( ((recordid,rspool),) )
-            add_bulk(recordid, record)
-            return recordid, record
-
         rspool = record_spool(receipt)
         self.receipt_registry[receipt] = rspool
-        records = (_insert(*_) for _ in records)
-        rspool.records.update(records)
+        for recordid,record in records:
+            update_record_registry( ((recordid,rspool),) )
+            rspool.records[recordid] = record
+            add_bulk(recordid, record)
 
     def check_spool_status(self, receipt):
         logger.info("checking the status of the records from spool for receipt: %s" % receipt)
