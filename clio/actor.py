@@ -219,8 +219,12 @@ class registry(object):
 
     def completed_record(self, recordid):
         logger.info("record successfully persisted: %s" % recordid)
-        spool_obj = self.record_registry.pop(recordid)
-        del spool_obj.records[recordid]
+        try:
+            spool_obj = self.record_registry.pop(recordid)
+        except KeyError:
+            logger.warn("Weird race condition where spool is sent twice occurred!")
+        else:
+            del spool_obj.records[recordid]
 
 
 class receiver(object):
